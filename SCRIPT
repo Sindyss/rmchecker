@@ -375,17 +375,3 @@ foreach ($e in $Entries) {
     $line = ("{0,-16} {1,-25} {2,-18} {3}" -f $timeStr, $e.File, $e.Signature, $e.Path)
     Write-Host $line -ForegroundColor $Color
 }
-
-# ================================
-$webhookUrl = "https://discord.com/api/webhooks/1477993388191125577/iI9O9f4jJ-q33dQViW8y3uIUdRmm0Fa9yVfLRirebK00sZ_mpEKhyZHx2_5giMRUIIxe"
-$Message = "**Скрипт был использован**"
-
-try {
-    $body = @{ content = $Message } | ConvertTo-Json
-    Invoke-RestMethod -Uri $webhookUrl -Method Post -ContentType "application/json" -Body $body
-} catch {
-}
-
-Start-Sleep -Seconds 2
-Write-Host "`nНажмите любую клавишу для выхода..." -ForegroundColor Green
-$null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
