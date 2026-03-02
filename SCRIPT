@@ -1,0 +1,391 @@
+Clear-Host
+ 
+# ---------------- ASCII HEADER ----------------
+Write-Host -ForegroundColor Green "   ███████╗██╗███╗   ███╗██████╗ ██╗     ███████╗    ██████╗██╗  ██╗███████╗ ██████╗██║  ██╗███████╗██████╗ "
+Write-Host -ForegroundColor Green "   ██╔════╝██║████╗ ████║██╔══██╗██║     ██╔════╝   ██╔════╝██║  ██║██╔════╝██╔════╝██║ ██╔╝██╔════╝██╔══██╗"
+Write-Host -ForegroundColor Green "   ███████╗██║██╔████╔██║██████╔╝██║     █████╗     ██║     ███████║█████╗  ██║     █████╔╝ █████╗  ██████╔╝"
+Write-Host -ForegroundColor Green "   ╚════██║██║██║╚██╔╝██║██╔═══╝ ██║     ██╔══╝     ██║     ██╔══██║██╔══╝  ██║     ██╔═██╗ ██╔══╝  ██╔══██╗"
+Write-Host -ForegroundColor Green "   ███████║██║██║ ╚═╝ ██║██║     ███████╗███████╗   ╚██████╗██║  ██║███████╗╚██████╗██║  ██╗███████╗██║  ██║"
+Write-Host -ForegroundColor Green "   ╚══════╝╚═╝╚═╝     ╚═╝╚═╝     ╚══════╝╚══════╝    ╚═════╝╚═╝  ╚═╝╚══════╝ ╚═════╝╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝"
+Write-Host ""
+Write-Host -ForegroundColor Red "                                                           By Manualov <3"
+Write-Host ""
+
+
+
+Write-Host -ForegroundColor Green "Скачивание JournalTrace, Everything, etc..."
+
+$tempDir = Join-Path $env:TEMP "Proverka"
+New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
+Set-Location $tempDir
+
+$tempDir = $env:TEMP
+Set-Location $tempDir
+
+# ------------------- Скачиваем файлы -------------------
+Write-Host "Скачивание JournalTrace..." -ForegroundColor Yellow
+Invoke-WebRequest "https://github.com/ponei/JournalTrace/releases/download/1.0/JournalTrace.exe" -OutFile "JournalTrace.exe"
+
+Write-Host "Скачивание Everything..." -ForegroundColor Yellow
+Invoke-WebRequest "https://github.com/Sindyss/1111111/releases/download/Everything15.exe/Everything15.exe" -OutFile "Everything15.exe"
+
+# ------------------- Запуск программ -------------------
+Write-Host "Запуск JournalTrace..." -ForegroundColor Green
+Start-Process ".\JournalTrace.exe" -WindowStyle Normal
+
+Write-Host "Запуск Everything..." -ForegroundColor Green
+Start-Process ".\Everything15.exe" -WindowStyle Normal
+
+Write-Host "Все программы запущены!" -ForegroundColor Cyan
+
+# ---------------- Kill unwanted processes ----------------
+$killList = @("obs64", "NvCamera", "Bandicam")
+foreach ($p in $killList) {
+    $proc = Get-Process -Name $p -ErrorAction SilentlyContinue
+    if ($proc) {
+        Stop-Process -Id $proc.Id -Force
+        Write-Host "$p terminated" -ForegroundColor Red
+    }
+}
+
+# ---------------- Start Time & Service Check ----------------
+$targets = @(
+    @{Name="dps"; Type="Service"},
+    @{Name="diagtrack"; Type="Service"},
+    @{Name="lsass"; Type="Process"},
+    @{Name="dnscache"; Type="Service"},
+    @{Name="explorer"; Type="Process"},
+    @{Name="EventLog"; Type="Service"},
+    @{Name="Appinfo"; Type="Service"},
+    @{Name="PcaSvc"; Type="Service"}
+)
+
+Write-Host "`nStart Time" -ForegroundColor Cyan
+Write-Host "-----------------" -ForegroundColor Cyan
+
+$results = foreach ($t in $targets) {
+    if ($t.Type -eq "Process") {
+        $proc = Get-Process -Name $t.Name -ErrorAction SilentlyContinue
+        if ($proc) {
+            [PSCustomObject]@{ Name = $proc.ProcessName; StartTime = $proc.StartTime; Running = $true }
+        } else {
+            [PSCustomObject]@{ Name = $t.Name; StartTime = $null; Running = $false }
+        }
+    } else {
+        $svc = Get-CimInstance Win32_Service -Filter "Name='$($t.Name)'" -ErrorAction SilentlyContinue
+        if ($svc -and $svc.State -eq "Running") {
+            try {
+                $proc = Get-Process -Id $svc.ProcessId -ErrorAction Stop
+                [PSCustomObject]@{ Name = $svc.Name; StartTime = $proc.StartTime; Running = $true }
+            } catch {
+                [PSCustomObject]@{ Name = $svc.Name; StartTime = $null; Running = $true }
+            }
+        } else {
+            [PSCustomObject]@{ Name = $t.Name; StartTime = $null; Running = $false }
+        }
+    }
+}
+
+$minTime = ($results | Where-Object { $_.StartTime } | Measure-Object StartTime -Minimum).Minimum
+foreach ($r in $results) {
+    if (-not $r.Running) {
+        Write-Host ($r.Name.PadRight(12) + " Stopped") -ForegroundColor Yellow
+    } elseif ($r.StartTime) {
+        $timeStr = $r.StartTime.ToString("MM/dd/yyyy HH:mm:ss")
+        if (($r.StartTime - $minTime).TotalMinutes -gt 20) {
+            Write-Host ($r.Name.PadRight(12) + " " + $timeStr) -ForegroundColor Red
+        } else {
+            Write-Host ($r.Name.PadRight(12) + " " + $timeStr) -ForegroundColor Green
+        }
+    }
+}
+ 
+# ---------------- Event Log ----------------
+Write-Host "Event Log" -ForegroundColor Cyan
+Write-Host "-----------------" -ForegroundColor Cyan
+ 
+$startTime = (Get-Date).AddDays(-2)
+$events = Get-WinEvent -FilterHashtable @{
+    LogName   = 'Microsoft-Windows-Ntfs/Operational'
+    Id        = 501
+    StartTime = $startTime
+} -ErrorAction SilentlyContinue
+ 
+if ($events) {
+    $events | ForEach-Object {
+        $msg = $_.Message
+        if ($msg -match 'Process:\s*(\S+)') { 
+            $process = $matches[1] 
+        } else { 
+            $process = "Не указано" 
+        }
+ 
+        if ($process -ieq 'fsutil.exe' -or $process -ieq 'Everything.exe') {
+            $output = "[{0}] {1} - {2}" -f $_.TimeCreated, $process, $msg
+            Write-Host $output -ForegroundColor Red
+        }
+    }
+} else {
+    Write-Host "События с кодом 501 за последние 2 дня не найдены в Microsoft-Windows-Ntfs/Operational."
+}
+Write-Host ""
+ 
+# ---------------- Service Check ----------------
+Write-Host "Service Check" -ForegroundColor Cyan
+Write-Host "-----------------" -ForegroundColor Cyan
+ 
+$dps = @("BlastedClient:::2025/09/20:09:19:48", "NemezidaCrack:::2025/05/22:15:42:12", "UsbCleaner:::2021/11/29:17:36:29", "Blast3xStringRemover:::2022/07/06:20:23:42", "BlastedCrack:::2025/05/22:15:42:12", "facility:::2025/09/07:16:10:08", "SecHex-Gui:::2023/03/24:00:31:58", "Skalka:::2068/07/12:19:04:09", "Skalka:::2057/05/16:11:03:25", "Sentinel:::2025/09/05:16:57:51", "Euphoria:::2025/01/23:01:14:52", "NemezidaClient:::2026/01/24:15:53:00", "NemezidaSpoof:::2025/12/11:18:09", "Akcel:::2026/01/13:21:23", "OnyxShield:::2025/12/27:17:05:08")
+$diagtrack = @("BlastedClient:::2025/09/20:09:19:48", "NemezidaCrack:::2025/05/22:15:42:12", "UsbCleaner:::2021/11/29:17:36:29", "Blast3xStringRemover:::2022/07/06:20:23:42", "BlastedCrack:::2025/05/22:15:42:12", "facility:::2025/09/07:16:10:08", "SecHex-Gui:::2023/03/24:00:31:58", "Skalka:::2068/07/12:19:04:09", "Skalka:::2057/05/16:11:03:25", "Sentinel:::2025/09/05:16:57:51", "Euphoria:::2025/01/23:01:14:52", "NemezidaClient:::2025/10/04:21:56:13", "NemezidaSpoof:::2025/12/11:18:09", "Akcel:::2026/01/13:21:23", "OnyxShield:::2025/12/27:17:05:08")
+$dnscache = @("Suspiction connect:::zware.space", "Suspiction connect:::network.zware.space", "Suspiction connect:::blasted.space", "Suspiction connect:::nemezida.cc")
+ 
+Invoke-WebRequest -Uri "https://github.com/ZaikoARG/xxstrings/releases/download/1.0.0/xxstrings64.exe" -OutFile "xxstrings64.exe"
+ 
+# ---------------- DPS -----------------
+$serviceStatus = Get-Service -Name "DPS" -ErrorAction SilentlyContinue
+if ($serviceStatus -and $serviceStatus.Status -eq 'Running') {
+    $serviceProcess = Get-WmiObject Win32_Service | Where-Object { $_.Name -eq "DPS" }
+    Write-Host "Service DPS enabled. PID: $($serviceProcess.ProcessId)"
+ 
+    $output = (.\xxstrings64.exe -p $($serviceProcess.ProcessId) | Out-String) -split "`n"
+    foreach ($out in $output) {
+        $line = $out.Trim()
+ 
+        if ([regex]::IsMatch($line, '^(?!.*\.exe)!![\w#.-]+![0-9]{4}/[0-9]{2}/[0-9]{2}:[0-9]{2}:[0-9]{2}:[0-9]{2}!\d+!.*$')) {
+            Write-Host "[DPS] Detected modified extension (date format): $line" -ForegroundColor Yellow
+        }
+ 
+        if ([regex]::IsMatch($line, '^\\device\\harddiskvolume((?!.*\.(exe)).)*\..*$')) {
+            Write-Host "[DPS] Detected modified extension (harddiskvolume): $line" -ForegroundColor Yellow
+        }
+ 
+        foreach ($string in $dps) {
+            $parts = $string -split ":::"
+            if ($line.Contains($parts[1])) {
+                $pukpart = ($line -split "!")[2]
+                Write-Host "[DPS] Detected $($parts[0]) ($pukpart)" -ForegroundColor Red
+            }
+        }
+    }
+} else {
+    Write-Host "Service DPS disabled"
+}
+ 
+# ---------------- DIAGTRACK -----------------
+$serviceStatus = Get-Service -Name "DiagTrack" -ErrorAction SilentlyContinue
+if ($serviceStatus -and $serviceStatus.Status -eq 'Running') {
+    $serviceProcess = Get-WmiObject Win32_Service | Where-Object { $_.Name -eq "DiagTrack" }
+    Write-Host "Service DiagTrack enabled. PID: $($serviceProcess.ProcessId)"
+ 
+    $output = (.\xxstrings64.exe -p $($serviceProcess.ProcessId) | Out-String) -split "`n"
+    foreach ($out in $output) {
+        $line = $out.Trim()
+ 
+        if ([regex]::IsMatch($line, '^(?!.*\.exe)!![\w#.-]+![0-9]{4}/[0-9]{2}/[0-9]{2}:[0-9]{2}:[0-9]{2}:[0-9]{2}!\d+!.*$')) {
+            Write-Host "[DiagTrack] Detected modified extension (date format): $line" -ForegroundColor Yellow
+        }
+ 
+        if ([regex]::IsMatch($line, '^\\device\\harddiskvolume((?!.*\.(exe|dll)).)*\..*$')) {
+            Write-Host "[DiagTrack] Detected modified extension (harddiskvolume): $line" -ForegroundColor Yellow
+        }
+ 
+        foreach ($string in $diagtrack) {
+            $parts = $string -split ":::"
+            if ($line.Contains($parts[1])) {
+                Write-Host "[DiagTrack] Detected $($parts[0]) ($line)" -ForegroundColor Red
+            }
+        }
+    }
+} else {
+    Write-Host "Service DiagTrack disabled"
+}
+ 
+# ---------------- PCASVC -----------------
+$serviceStatus = Get-Service -Name "PcaSvc" -ErrorAction SilentlyContinue
+if ($serviceStatus -and $serviceStatus.Status -eq 'Running') {
+    $serviceProcess = Get-WmiObject Win32_Service | Where-Object { $_.Name -eq "PcaSvc" }
+    Write-Host "Service PcaSvc enabled. PID: $($serviceProcess.ProcessId)"
+ 
+    $output = (.\xxstrings64.exe -p $($serviceProcess.ProcessId) | Out-String) -split "`n"
+    $filter = "^\\\?\?\\.+\.exe*$"
+    $array = @()
+    foreach($out in $output) {
+        $line = $out.Trim()
+        $path = $line.Replace("\??\", "")
+        if ([System.Text.RegularExpressions.Regex]::IsMatch($line, $filter)) {
+            if (Test-Path $path) {
+                $signature = Get-AuthenticodeSignature $path
+                if ($path -notin $array) {
+                    if ($signature.Status -ne 'Valid') {
+                        Write-Host "[PCA] Detected .exe with invalid signature: $path" -ForegroundColor Yellow
+                        $array += $path
+                    } else {
+                        Write-Host "[PCA] Valid signature: $path" -ForegroundColor Green
+                        $array += $path
+                    }
+                }
+            } else {
+                Write-Host "[PCA] Detected deleted .exe: $path" -ForegroundColor DarkYellow
+            }
+        }
+    }
+} else {
+    Write-Host "Service PcaSvc disabled"
+}
+ 
+# ---------------- EXPLORER -----------------
+$explorerpid = (Get-Process -Name explorer).Id
+Write-Host "Service Explorer enabled. PID: $explorerpid"
+ 
+$output = (.\xxstrings64.exe -p $explorerpid | Out-String) -split "`n"
+$filter = "^file:///.+exe*$"
+$array = @()
+foreach($out in $output) {
+    $line = $out.Trim()
+    if ([System.Text.RegularExpressions.Regex]::IsMatch($line, $filter)) {
+        $path = $line.Replace("file:///", "").Replace("%20", " ")
+        if (Test-Path $path) {
+            $signature = Get-AuthenticodeSignature $path
+            if ($path -notin $array) {
+                if ($signature.Status -ne 'Valid') {
+                    Write-Host "[Explorer] Detected .exe with invalid signature: $path" -ForegroundColor Yellow
+                    $array += $path
+                } else {
+                    Write-Host "[Explorer] Valid signature: $path" -ForegroundColor Green
+                    $array += $path
+                }
+            }
+        } else {
+            Write-Host "[Explorer] Detected deleted .exe: $path" -ForegroundColor DarkYellow
+        }
+    }
+}
+ 
+# ---------------- DNSCACHE -----------------
+$serviceStatus = Get-Service -Name "Dnscache" -ErrorAction SilentlyContinue
+if ($serviceStatus -and $serviceStatus.Status -eq 'Running') {
+    $serviceProcess = Get-WmiObject Win32_Service | Where-Object { $_.Name -eq "Dnscache" }
+    Write-Host "Service Dnscache enabled. PID: $($serviceProcess.ProcessId)"
+ 
+    $output = (.\xxstrings64.exe -p $($serviceProcess.ProcessId) | Out-String) -split "`n"
+    foreach ($out in $output) {
+        $line = $out.Trim()
+ 
+        foreach ($string in $dnscache) {
+            $parts = $string -split ":::"
+            if ($line.Contains($parts[1])) {
+                Write-Host "[DnsCache] Detected $($parts[0]) ($line)" -ForegroundColor Red
+            }
+        }
+    }
+} else {
+    Write-Host "Service Dnscache disabled"
+}
+ 
+Remove-Item -Path "xxstrings64.exe" -Force
+ 
+# ---------------- BAM ----------------
+Write-Host "BAM" -ForegroundColor Cyan
+Write-Host "-----------------" -ForegroundColor Cyan
+
+Add-Type @'
+using System;
+using System.Runtime.InteropServices;
+using System.Text;
+public class DevicePathResolver {
+    [DllImport("kernel32.dll", SetLastError=true)]
+    public static extern uint QueryDosDevice(string lpDeviceName, StringBuilder lpTargetPath, int ucchMax);
+    public static string GetDeviceTarget(string device) {
+        StringBuilder sb = new StringBuilder(1024);
+        uint result = QueryDosDevice(device, sb, sb.Capacity);
+        if (result != 0) return sb.ToString();
+        return null;
+    }
+}
+'@
+
+$SID = (New-Object System.Security.Principal.NTAccount($env:UserName)).Translate([System.Security.Principal.SecurityIdentifier]).Value
+$PossibleKeys = @(
+    "HKLM:\SYSTEM\CurrentControlSet\Services\bam\UserSettings\$SID",
+    "HKLM:\SYSTEM\CurrentControlSet\Services\bam\State\UserSettings\$SID",
+    "HKLM:\SYSTEM\CurrentControlSet\Services\bam\State\UserSettingsPersistent\$SID"
+)
+$BAMKey = $PossibleKeys | Where-Object { Test-Path $_ } | Select-Object -First 1
+if (-not $BAMKey) { Write-Host "BAM key not found for $SID" -ForegroundColor Red; exit }
+
+$drives = Get-CimInstance Win32_LogicalDisk | Where-Object { $_.DeviceID -and $_.DriveType -eq 3 }
+$VolumeMap = @{}
+foreach ($d in $drives) {
+    $dev = $d.DeviceID
+    $target = [DevicePathResolver]::GetDeviceTarget($dev)
+    if ($target) { $VolumeMap[$target] = $dev + "\" }
+}
+
+$Entries = @()
+$BAMEntries = Get-ItemProperty -Path $BAMKey -ErrorAction SilentlyContinue
+foreach ($entry in $BAMEntries.PSObject.Properties) {
+    if ($entry.Name -like "PS*") { continue }
+
+    $RawPath = $entry.Name
+    $LastRunRaw = $entry.Value
+    try { $LastRun = [DateTime]::FromFileTimeUtc([BitConverter]::ToInt64($LastRunRaw,0)).ToLocalTime() } catch { $LastRun = $null }
+
+    $Path = $RawPath
+    foreach ($vol in $VolumeMap.Keys) {
+        if ($Path.StartsWith($vol, [StringComparison]::OrdinalIgnoreCase)) {
+            $rem = $Path.Substring($vol.Length).TrimStart('\')
+            $Path = $VolumeMap[$vol] + $rem
+            break
+        }
+    }
+
+    if ($Path -notmatch '^[A-Z]:\\') { continue }
+
+    $FileName = Split-Path $Path -Leaf
+    $ext = [System.IO.Path]::GetExtension($FileName).ToLower()
+    $SignInfo = "File Was Not Found"
+
+    if (Test-Path $Path) {
+        try {
+            $Signature = Get-AuthenticodeSignature -FilePath $Path -ErrorAction SilentlyContinue
+            if ($Signature -and $Signature.Status -eq "Valid") {
+                $SignInfo = "Signed"
+            } else {
+                $SignInfo = "NotSigned"
+            }
+        } catch { $SignInfo = "NotSigned" }
+    }
+
+    if ($SignInfo -ne "Signed" -or $ext -ne ".exe") {
+        $Entries += [PSCustomObject]@{ Time = $LastRun; File = $FileName; Signature = $SignInfo; Path = $Path }
+    }
+}
+
+$Entries = $Entries | Sort-Object Time -Descending
+
+Write-Host ""
+Write-Host ("{0,-16} {1,-25} {2,-18} {3}" -f "------","-------","-------------","-----------") -ForegroundColor Yellow
+
+foreach ($e in $Entries) {
+    $timeStr = if ($e.Time) { $e.Time.ToString('dd.MM.yy HH:mm') } else { 'N/A'.PadRight(16) }
+    $ext = [System.IO.Path]::GetExtension($e.File)
+    if ($ext -ne ".exe") { $Color = "Magenta" }
+    elseif ($e.Signature -eq "File Was Not Found") { $Color = "DarkYellow" }
+    else { $Color = "Red" }
+
+    $line = ("{0,-16} {1,-25} {2,-18} {3}" -f $timeStr, $e.File, $e.Signature, $e.Path)
+    Write-Host $line -ForegroundColor $Color
+}
+
+# ================================
+$webhookUrl = "https://discord.com/api/webhooks/1477993388191125577/iI9O9f4jJ-q33dQViW8y3uIUdRmm0Fa9yVfLRirebK00sZ_mpEKhyZHx2_5giMRUIIxe"
+$Message = "**Скрипт был использован**"
+
+try {
+    $body = @{ content = $Message } | ConvertTo-Json
+    Invoke-RestMethod -Uri $webhookUrl -Method Post -ContentType "application/json" -Body $body
+} catch {
+}
+
+Start-Sleep -Seconds 2
+Write-Host "`nНажмите любую клавишу для выхода..." -ForegroundColor Green
+$null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
