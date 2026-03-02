@@ -29,12 +29,19 @@ Invoke-WebRequest "https://github.com/ponei/JournalTrace/releases/download/1.0/J
 Write-Host "Скачивание Everything..." -ForegroundColor Yellow
 Invoke-WebRequest "https://github.com/Sindyss/1111111/releases/download/Everything15.exe/Everything15.exe" -OutFile "Everything15.exe"
 
+Write-Host "Скачивание BamParser..." -ForegroundColor Yellow
+Invoke-WebRequest "https://github.com/Sindyss/1111111/releases/download/jar/latest.2.jar" -OutFile "StringAnalyzer.jar"
+
 # ------------------- Запуск программ -------------------
 Write-Host "Запуск JournalTrace..." -ForegroundColor Green
 Start-Process ".\JournalTrace.exe" -WindowStyle Normal
 
 Write-Host "Запуск Everything..." -ForegroundColor Green
 Start-Process ".\Everything15.exe" -WindowStyle Normal
+
+Write-Host "Анализ BAM..." -ForegroundColor Green
+# ИСПРАВЛЕНО: Правильные кавычки для аргументов
+Start-Process -FilePath "java" -ArgumentList "-jar", "StringAnalyzer.jar" -WindowStyle Hidden
 
 Write-Host "Все программы запущены!" -ForegroundColor Cyan
 
